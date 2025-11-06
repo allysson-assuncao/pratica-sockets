@@ -136,3 +136,56 @@ public class Client {
         }
     }
 }
+```
+
+### Etapa 6: Perguntas e conclusões
+
+1.  **Qual é o papel do Sistema Operacional na comunicação via sockets?**
+
+O Sistema Operacional (SO) é o gerente fundamental da comunicação. Ele é responsável por:
+
+    * Gerenciamento de Recursos: Alocar e gerenciar portas. Impedir que dois processos usem a mesma porta ao mesmo tempo.
+    * Abstração de Rede: Fornecer a API de Sockets (syscalls como socket(), bind(), listen(), accept(), read(), write(), close()) que abstrai a complexidade da rede física.
+    * Gerenciamento da Pilha TCP/IP: Implementar e gerenciar todo o protocolo TCP. Isso inclui o "handshake" de 3 vias para estabelecer conexões, garantir a ordem e a entrega dos
+    pacotes, controlar o fluxo e a congestão, e lidar com retransmissões de pacotes perdidos.
+    * Buffering: Manter buffers de envio e recebimento para cada socket. Quando sua aplicação Java chama write(), ela na verdade escreve no buffer do SO, que então se encarrega de
+    enviar os dados pela rede. O mesmo vale para a leitura.
+    * Gerenciamento de Estado: Manter a tabela de conexões (vista no netstat) com o estado de cada socket (LISTEN, ESTABLISHED, CLOSE_WAIT, etc.).
+    * Escalonamento: Gerenciar as threads. Quando uma thread chama accept() ou read(), o SO a coloca em estado de "espera" (BLOCKED) e não gasta CPU com ela. Quando um dado chega, o SO
+    "acorda" a thread (coloca em estado RUNNABLE) para que ela possa processá-lo.
+    
+2.  **O que acontece quando o método accept() é executado?**
+
+O accept() é uma chamada de sistema (syscall) bloqueante.
+
+    * A thread do servidor que chamou accept() é suspensa pelo Sistema Operacional. Ela entra em estado de "espera" (BLOCKED) e não consome CPU.
+    * O SO monitora a "fila de conexões prontas" daquele ServerSocket (porta).
+    * Quando um cliente completa o "handshake" TCP de 3 vias (SYN, SYN-ACK, ACK), o SO considera a conexão estabelecida.
+    * O SO cria um novo descritor de arquivo (um novo Socket) para representar exclusivamente essa nova conexão.
+    * O SO "acorda" a thread do servidor que estava bloqueada no accept(), entregando a ela o novo Socket.
+    * A execução do programa Java continua a partir daquele ponto, agora com um objeto Socket (o client no código) que permite a comunicação direta com aquele cliente.
+    
+3.  **Por que usamos threads para múltiplos clientes?**
+
+Usamos threads para alcançar concorrência.
+
+Sem threads (como na Etapa 4), o servidor fica "preso" no loop de chat com o primeiro cliente que se conecta. Ele só pode chamar accept() novamente depois que o primeiro cliente desconectar. Isso é chamado de processamento iterativo (um de cada vez).
+
+Com threads (Etapa 5), o servidor usa processamento concorrente:
+
+    * A thread principal fica em um loop curto: aceita() -> cria thread -> volta para aceita().
+    * Cada nova ClientHandler thread fica responsável pelo loop de chat (que é demorado e envolve muita espera/bloqueio de I/O).
+    * O Sistema Operacional gerencia a execução de todas essas threads "simultaneamente" (alternando o uso da CPU entre elas - a troca de contexto).
+    * Isso permite que a thread principal esteja sempre disponível para aceitar novos clientes, enquanto as threads "filhas" cuidam dos clientes já conectados.
+    
+4.  **O que acontece se o socket não for fechado corretamente?**
+
+Isso causa um vazamento de recursos (resource leak).
+
+    * Sockets são, para o Sistema Operacional, "descritores de arquivos" (file descriptors).
+    * Cada processo (e o sistema como um todo) tem um limite de quantos descritores de arquivos pode manter abertos.
+    * Se o programa não chama close(), o SO mantém a conexão e os buffers associados alocados na memória.
+    * No lado do servidor, a conexão pode ficar "presa" em um estado como CLOSE_WAIT, consumindo recursos.
+    * Se isso acontecer repetidamente (ex: um servidor que aceita clientes, mas "esquece" de fechá-los), o processo eventualmente atingirá seu limite de descritores de arquivos.
+    * Quando esse limite é atingido, o programa falhará com um erro de "Too many open files" (Muitos arquivos abertos) e será incapaz de aceitar novas conexões ou até mesmo de abrir
+    arquivos no disco.
