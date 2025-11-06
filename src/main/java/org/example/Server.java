@@ -9,23 +9,31 @@ import java.util.Scanner;
 public class Server {
     public static void main(String[] args) {
         try {
+            // 1. Cria um ServerSocket que "escuta" na porta 6013.
+            // O SO reserva esta porta para este processo.
             ServerSocket sock = new ServerSocket(6013);
 
-            // agora escuta conexıes
+            // 2. Inicia um loop infinito para manter o servidor sempre no ar.
             while (true) {
+                // 3. Ponto CRÍTICO: é uma chamada bloqueante.
+                // O programa para aqui e o SO assume, esperando um cliente.
+                // Quando um cliente conecta, o SO cria um *novo* Socket
+                // para essa conexão específica, e o método retorna.
                 Socket client = sock.accept();
-                // temos uma conexão
 
+                // 4. Obtém o "canal de escrita" (saída) para o cliente.
+                // O 'true' (autoFlush) garante que as mensagens sejam enviadas
+                // imediatamente após um println.
                 PrintWriter pout = new PrintWriter(client.getOutputStream(), true);
 
-                Scanner entrada = new Scanner(System.in);
-                System.out.println("Digite uma mensagem para ser enviada ao cliente: ");
-                String mensagem = entrada.nextLine();
+                // 5. Envia a data e hora atuais como uma String para o cliente.
+                pout.println(new java.util.Date().toString());
 
-                pout.println(mensagem);
-
-                // fecha o socket e volta a escutar conexıes
+                // 6. Fecha a conexão *apenas* com este cliente específico.
                 client.close();
+
+                // 7. O loop 'while' repete, e o servidor volta para a linha 3 (accept),
+                // esperando o *próximo* cliente.
             }
         } catch (IOException ioe) {
             System.err.println(ioe);
